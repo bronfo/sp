@@ -1,0 +1,5 @@
+httptools>=0.0.9
+uvloop>=0.5.3
+ujson>=1.35
+aiofiles>=0.3.0
+websockets>=4.0
