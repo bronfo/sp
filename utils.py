@@ -59,6 +59,76 @@ class MyStream():
             return None
         return data
 
+class CryptedStream():
+    def __init__(self):
+        self._buf = b''
+        self._want = 0
+        
+        self._len = -1
+        self._chunk = b''
+    
+    def parse_chunk(self):
+        while True:
+            if self._len == -1:
+                if len(self._buf) >= 4:
+                    # get length
+                    self._len = int.from_bytes(self._buf[:4], 'big')
+                    self._buf = self._buf[4:]
+                    # to get chunk
+                else:
+                    # need more data for length
+                    break
+            if self._len != -1 and len(self._buf) >= self._len:
+                # get chunk
+                self._chunk += crypt_string(self._buf[:self._len], KEY, False)
+                self._buf = self._buf[self._len:]
+                self._len = -1
+                # to get length
+            else:
+                # need more data for chunk
+                break
+    
+    def feed(self, data):
+        if not data:
+            if self._want:
+                self._want = 0
+                self._future.set_result(None)
+            #set closed flag?
+        else:
+            self._buf += data
+            self.parse_chunk()
+            
+            if self._want:
+                if self._want < 0:
+                    r = self._chunk
+                    self._chunk = b''
+                    self._want = 0
+                    self._future.set_result(r)
+                elif len(self._chunk) >= self._want:
+                    n = self._want
+                    r = self._chunk[:n]
+                    self._chunk = self._chunk[n:]
+                    self._want = 0
+                    self._future.set_result(r)
+    
+    async def read(self, n = -1):
+        if n == 0:
+            raise Exception('error argument')
+        if n < 0 and len(self._chunk) > 0:
+            # read all
+            r = self._chunk
+            self._chunk = b''
+            return r
+        if n > 0 and len(self._chunk) >= n:
+            r = self._chunk[:n]
+            self._chunk = self._chunk[n:]
+            return r
+        self._want = n
+        self._future = asyncio.Future()
+        r = await self._future
+        return r
+
+
 # MyStream stm, asyncio.Transport transport
 async def socks_parse(stm, transport):
     # req1: ver|nmethods|methods
