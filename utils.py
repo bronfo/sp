@@ -8,7 +8,6 @@ class MyStream():
         self._want = 0
     
     def feed(self, data):
-        #print(f'feed: {data} _want: {self._want}')
         if not data:
             if self._want:
                 self._want = 0
@@ -39,7 +38,6 @@ class MyStream():
         if n > 0 and len(self._buf) >= n:
             r = self._buf[:n]
             self._buf = self._buf[n:]
-            print(f'read_n {n}')
             return r
         self._want = n
         self._future = asyncio.Future()
@@ -47,7 +45,6 @@ class MyStream():
         return r
     
     async def read_chunk(self):
-        print('reading chunk')
         len = await self.read(4)
         print('len1 ' + repr(len))
         if not len:

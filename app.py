@@ -9,7 +9,7 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('v2!')
+    return response.text('v3!')
 
 async def ws_stm(stm, ws):
     while True:
@@ -17,6 +17,7 @@ async def ws_stm(stm, ws):
         if chunk is None:
             break
         elif chunk == 0:
+            # get 0 reply 0
             await ws.send(b'\x00\x00\x00\x00')
         else:
             print(b'chunk: ' + chunk)
@@ -30,7 +31,7 @@ async def ws(request, ws):
         try:
             data = await ws.recv()
         except Exception:
-            print('e===========')
+            print('disconnected')
             stm.feed(None)
             break
         if not data:
@@ -41,6 +42,7 @@ async def ws(request, ws):
         elif data == 'connect':
             print(data)
         elif data == 'close':
+            # get 'close' reply 'close'
             await ws.send(data)
             print(data)
 
