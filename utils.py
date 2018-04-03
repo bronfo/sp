@@ -78,3 +78,20 @@ async def socks_parse(stm, transport):
     port = int.from_bytes(data[-2:], 'big')
     transport.write(b'\x05\x00\x00' + header + data)
     return host, port
+
+
+def crypt_string(data, key, encode=True):
+    from itertools import cycle
+    import base64
+    # the python3
+    izip = zip
+    # to bytes
+    data = data.encode()
+    if not encode:
+        data = base64.decodestring(data)
+    #xored = ''.join(chr(ord(x) ^ ord(y)) for (x,y) in izip(data, cycle(key)))
+    xored = b''.join(bytes([x ^ y]) for (x,y) in izip(data, cycle(key)))
+    if encode:
+        xored = base64.encodestring(xored)
+        return xored.decode().strip()
+    return xored.decode()
