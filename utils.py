@@ -54,7 +54,7 @@ class MyStream():
         if not len:
             return len # 0 or None
         data = await self.read(len)
-        print('chunk ' + repr(data))
+        print('chunk ' + repr(data)[:6])
         if not data:
             return None
         return data
@@ -93,18 +93,16 @@ async def socks_parse(stm, transport):
     return host, port
 
 
+# bytes data
 def crypt_string(data, key, encode=True):
     from itertools import cycle
     import base64
     # the python3
     izip = zip
     # to bytes
-    data = data.encode()
+    #data = data.encode()
     if not encode:
-        data = base64.decodestring(data)
+        data = base64.b64decode(data)
     #xored = ''.join(chr(ord(x) ^ ord(y)) for (x,y) in izip(data, cycle(key)))
     xored = b''.join(bytes([x ^ y]) for (x,y) in izip(data, cycle(key)))
-    if encode:
-        xored = base64.encodestring(xored)
-        return xored.decode().strip()
-    return xored.decode()
+    return base64.b64encode(xored) if encode else xored

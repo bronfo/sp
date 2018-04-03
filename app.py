@@ -4,6 +4,7 @@ import asyncio
 from sanic import Sanic
 from sanic import response
 from utils import MyStream
+from utils import crypt_string
 
 app = Sanic()
 
@@ -20,7 +21,7 @@ async def ws_stm(stm, ws):
             # get 0 reply 0
             await ws.send(b'\x00\x00\x00\x00')
         else:
-            print(b'chunk: ' + chunk)
+            #chunk = crypt_string(chunk, KEY, False)
             await ws.send(int.to_bytes(len(chunk), 4, 'big') + chunk)
 
 @app.websocket('/ws')
