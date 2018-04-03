@@ -45,6 +45,22 @@ class MyStream():
         self._future = asyncio.Future()
         r = await self._future
         return r
+    
+    async def read_chunk(self):
+        print('reading chunk')
+        len = await self.read(4)
+        print('len1 ' + repr(len))
+        if not len:
+            return None
+        len = int.from_bytes(len, 'big')
+        print('len2 ' + repr(len))
+        if not len:
+            return len # 0 or None
+        data = await self.read(len)
+        print('chunk ' + repr(data))
+        if not data:
+            return None
+        return data
 
 # MyStream stm, asyncio.Transport transport
 async def socks_parse(stm, transport):
