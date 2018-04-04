@@ -54,18 +54,19 @@ class MyStream():
         if not len:
             return len # 0 or None
         data = await self.read(len)
-        print('chunk ' + repr(data)[:6])
+        print('chunk ' + repr(data)[:10])
         if not data:
             return None
         return data
 
 class CryptedStream():
-    def __init__(self):
+    def __init__(self, key):
         self._buf = b''
         self._want = 0
         
         self._len = -1
         self._chunk = b''
+        self._key = key
     
     def parse_chunk(self):
         while True:
@@ -78,9 +79,9 @@ class CryptedStream():
                 else:
                     # need more data for length
                     break
-            if self._len != -1 and len(self._buf) >= self._len:
+            if self._len > 0 and len(self._buf) >= self._len:
                 # get chunk
-                self._chunk += crypt_string(self._buf[:self._len], KEY, False)
+                self._chunk += crypt_string(self._buf[:self._len], self._key, False)
                 self._buf = self._buf[self._len:]
                 self._len = -1
                 # to get length
@@ -97,6 +98,13 @@ class CryptedStream():
         else:
             self._buf += data
             self.parse_chunk()
+            
+            if self._len == 0:
+                self._len = -1
+                if self._want:
+                    self._want = 0
+                    self._future.set_result(0)
+                #set closed flag?
             
             if self._want:
                 if self._want < 0:
@@ -128,38 +136,56 @@ class CryptedStream():
         r = await self._future
         return r
 
+class MyTransfer(asyncio.Protocol):
+    def __init__(self, connect_callback):
+        self._callback = connect_callback
+    def connection_made(self, transport):
+        # create stream-object in callback, keep it and return it.
+        # it can be MyStream or CryptedStream.
+        self._stm = self._callback(transport)
+    def data_received(self, data):
+        self._stm.feed(data)
+    def connection_lost(self, exc):
+        self._stm.feed(None)
 
-# MyStream stm, asyncio.Transport transport
-async def socks_parse(stm, transport):
+def make_chunk(data, key):
+    data = crypt_string(data, key, True)
+    return int.to_bytes(len(data), 4, 'big') + data
+
+# read-function, write-function
+async def socks_parse(readfn, writefn):
     # req1: ver|nmethods|methods
-    header = await stm.read(1)
+    header = await readfn(1)
     if header != b'\x05':
-        return None, None
-    data = await stm.read(1)
-    methods = await stm.read(data[0])
+        return None
+    data = await readfn(1)
+    methods = await readfn(data[0])
+    if b'\x00' not in methods:
+        await writefn(b'\x05\xff')
+        return None
     
     # JUST WRITE!
-    transport.write(b'\x05\x00')
+    await writefn(b'\x05\x00')
     
     # req2: VER|CMD|RSV|ATYP|ADDR|PORT
-    header = await stm.read(3)
+    header = await readfn(3)
     if header != b'\x05\x01\x00':
-        transport.write('\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
-        return None, None
-    header = await stm.read(1)
+        await writefn('\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+        return None
+    header = await readfn(1)
     if header == b'\x01':
-        data = await stm.read(4)
+        data = await readfn(4)
         host = data
     elif header == b'\x03':
-        data = await stm.read(1)
-        data += await stm.read(data[0])
+        data = await readfn(1)
+        data += await readfn(data[0])
         host = data[1:]
     else:
-        transport.write('\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
-        return None, None
-    data += await stm.read(2)
+        await writefn('\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
+        return None
+    data += await readfn(2)
     port = int.from_bytes(data[-2:], 'big')
-    transport.write(b'\x05\x00\x00' + header + data)
+    await writefn(b'\x05\x00\x00' + header + data)
     return host, port
 
 
