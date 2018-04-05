@@ -1,6 +1,7 @@
 #coding:utf-8
 
 import asyncio
+import socket
 
 class MyStream():
     def __init__(self):
@@ -8,6 +9,7 @@ class MyStream():
         self._want = 0
     
     def feed(self, data):
+        print('MyStream feed: ' + repr(data))
         if not data:
             if self._want:
                 self._want = 0
@@ -90,6 +92,7 @@ class CryptedStream():
                 break
     
     def feed(self, data):
+        print('CryptedStream feed: ' + repr(data))
         if not data:
             if self._want:
                 self._want = 0
@@ -120,6 +123,7 @@ class CryptedStream():
                     self._future.set_result(r)
     
     async def read(self, n = -1):
+        print('reading buf: ' + repr(self._buf))
         if n == 0:
             raise Exception('error argument')
         if n < 0 and len(self._chunk) > 0:
@@ -137,16 +141,31 @@ class CryptedStream():
         return r
 
 class MyTransfer(asyncio.Protocol):
-    def __init__(self, connect_callback):
-        self._callback = connect_callback
+    def __init__(self, transf_fn, stream_class, transports):
+        self._transf_fn = transf_fn
+        self._stream_class = stream_class
+        self._transports = transports
     def connection_made(self, transport):
-        # create stream-object in callback, keep it and return it.
+        # create stream-object, for self and for transf_fn.
         # it can be MyStream or CryptedStream.
-        self._stm = self._callback(transport)
+        self._stm = self._stream_class()
+        print('new stm: ' + repr(id(self._stm))
+            + ' new transport: ' + repr(id(transport)))
+        self._transports[2] = self._stm
+        self._transports[3] = transport
+        asyncio.ensure_future(self._transf_fn(self._transports))
     def data_received(self, data):
         self._stm.feed(data)
     def connection_lost(self, exc):
         self._stm.feed(None)
+
+async def run_server(loop, host, port, transf_fn, stream_class):
+    transports = [None, None, None, None]
+    server = await loop.create_server(
+        lambda: MyTransfer(transf_fn, stream_class,
+        transports), host, port)
+    await server.wait_closed()
+
 
 def make_chunk(data, key):
     data = crypt_string(data, key, True)
@@ -175,7 +194,7 @@ async def socks_parse(readfn, writefn):
     header = await readfn(1)
     if header == b'\x01':
         data = await readfn(4)
-        host = data
+        host = socket.inet_ntoa(data)
     elif header == b'\x03':
         data = await readfn(1)
         data += await readfn(data[0])
