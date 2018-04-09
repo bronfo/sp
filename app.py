@@ -16,14 +16,14 @@ async def test(request):
 
 async def from_target(arg, stm, transport):
     # from target to tunnel
-    ws = arg[0]
+    ws = arg['ws']
     print('connect ok')
     while True:
         data = await stm.read()
         if data:
             await ws.send(utils.make_chunk(data, KEY))
         else:
-            if not arg[1]:
+            if not arg['client_close']:
                 await ws.send('close')
                 print('target close')
             break
@@ -46,7 +46,7 @@ async def transf(stm, ws, arg):
         else:
             # from tunnel to target
             transport = pair[0]
-            arg[2] = transport
+            arg['target_writer'] = transport
             while True:
                 data = await stm.read()
                 if data:
@@ -60,7 +60,8 @@ async def transf(stm, ws, arg):
 @app.websocket('/ws')
 async def ws(request, ws):
     stm = utils.CryptedStream(KEY)
-    arg = [ws, False, None]
+    # one client one time
+    arg = {'ws': ws, 'client_close': False, 'target_writer': None}
     while True:
         try:
             data = await ws.recv()
@@ -75,15 +76,17 @@ async def ws(request, ws):
             stm.feed(data)
         elif data == 'connect':
             print(data)
+            arg['client_close'] = False
+            arg['target_writer'] = None
             asyncio.ensure_future(transf(stm, ws, arg))
         elif data == 'close':
             # get 'close' reply 'close'
             print('ws client want to close')
-            arg[1] = True
+            arg['client_close'] = True
             stm.feed(None) #!!
             await ws.send('closed')
-            if arg[2]:
-                arg[2].close()
+            if arg['target_writer']:
+                arg['target_writer'].close()
         elif data == 'closed':
             print('ws read break2: ' + repr(data))
             stm.feed(None) #!!

@@ -142,8 +142,6 @@ class MyTransfer(asyncio.Protocol):
         self._transf_fn = transf_fn
         self._arg = arg
     def connection_made(self, transport):
-        # create stream-object, for self and for transf_fn.
-        # it can be MyStream or CryptedStream.
         self._stm = MyStream()
         asyncio.ensure_future(self._transf_fn(self._arg, self._stm, transport))
     def data_received(self, data):
