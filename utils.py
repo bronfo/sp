@@ -141,30 +141,18 @@ class CryptedStream():
         return r
 
 class MyTransfer(asyncio.Protocol):
-    def __init__(self, transf_fn, stream_class, transports):
+    def __init__(self, transf_fn, arg):
         self._transf_fn = transf_fn
-        self._stream_class = stream_class
-        self._transports = transports
+        self._arg = arg
     def connection_made(self, transport):
         # create stream-object, for self and for transf_fn.
         # it can be MyStream or CryptedStream.
-        self._stm = self._stream_class()
-        print('new stm: ' + repr(id(self._stm))
-            + ' new transport: ' + repr(id(transport)))
-        self._transports[2] = self._stm
-        self._transports[3] = transport
-        asyncio.ensure_future(self._transf_fn(self._transports))
+        self._stm = MyStream()
+        asyncio.ensure_future(self._transf_fn(self._arg, self._stm, transport))
     def data_received(self, data):
         self._stm.feed(data)
     def connection_lost(self, exc):
         self._stm.feed(None)
-
-async def run_server(loop, host, port, transf_fn, stream_class):
-    transports = [None, None, None, None]
-    server = await loop.create_server(
-        lambda: MyTransfer(transf_fn, stream_class,
-        transports), host, port)
-    await server.wait_closed()
 
 
 def make_chunk(data, key):

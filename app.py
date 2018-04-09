@@ -11,14 +11,12 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('v4!')
+    return response.text('v5!')
 
 
-async def transf(transports):
+async def transf(ws, stm, transport):
     # from target to tunnel
     print('connect ok')
-    ws = transports[1]
-    stm = transports[2]
     while True:
         data = await stm.read()
         if data:
@@ -38,15 +36,13 @@ async def ws_proc(stm, ws):
         await ws.send('close')
     else:
         try:
-            transports = [stm, ws, None, None]
             pair = await asyncio.get_event_loop().create_connection(
-                lambda: utils.MyTransfer(transf, utils.MyStream,
-                transports), *target)
+                lambda: utils.MyTransfer(transf, ws), *target)
         except Exception as e:
             print('connect ' + repr(target) + ' fail: ' + repr(e))
         else:
             # from tunnel to target
-            transport = transports[3]
+            transport = pair[0]
             while True:
                 data = await stm.read()
                 print('from_tunnel: ' + repr(data))
