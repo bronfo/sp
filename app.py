@@ -14,76 +14,79 @@ async def test(request):
     return response.text('v5!')
 
 
-async def transf(ws, stm, transport):
+async def from_target(arg, stm, transport):
     # from target to tunnel
+    ws = arg[0]
     print('connect ok')
     while True:
         data = await stm.read()
         if data:
             await ws.send(utils.make_chunk(data, KEY))
         else:
+            if not arg[1]:
+                await ws.send('close')
+                print('target close')
             break
     
-    print('transf end')
+    print('from_target end')
 
-async def ws_proc(stm, ws):
+async def transf(stm, ws, arg):
     target = await utils.socks_parse(stm.read,
         lambda data: ws.send(utils.make_chunk(data, KEY))
         )
     print('target=' + repr(target))
     if not target:
-        await ws.send(b'\x00\x00\x00\x00')
         await ws.send('close')
     else:
         try:
             pair = await asyncio.get_event_loop().create_connection(
-                lambda: utils.MyTransfer(transf, ws), *target)
+                lambda: utils.MyTransfer(from_target, arg), *target)
         except Exception as e:
             print('connect ' + repr(target) + ' fail: ' + repr(e))
         else:
             # from tunnel to target
             transport = pair[0]
+            arg[2] = transport
             while True:
                 data = await stm.read()
-                print('from_tunnel: ' + repr(data))
-                if data is None:
-                    transport.close()
-                    break
-                elif data == 0:
-                    transport.close()
-                    # get 0 reply 0
-                    await ws.send(b'\x00\x00\x00\x00')
-                    break
-                else:
-                    #await ws.send(utils.make_chunk(data, KEY))
+                if data:
                     transport.write(data)
+                else:
+                    print('transf read break: ' + repr(data))
+                    break
     
-    print('ws_proc end')
+    print('transf end')
 
 @app.websocket('/ws')
 async def ws(request, ws):
     stm = utils.CryptedStream(KEY)
+    arg = [ws, False, None]
     while True:
         try:
             data = await ws.recv()
         except Exception:
             print('disconnected')
-            stm.feed(None)
-            break
         if not data:
+            print('ws read break1: ' + repr(data))
             stm.feed(None)
+            # todo target.close()
             break
         elif type(data) == bytes:
             stm.feed(data)
         elif data == 'connect':
             print(data)
-            asyncio.ensure_future(ws_proc(stm, ws))
+            asyncio.ensure_future(transf(stm, ws, arg))
         elif data == 'close':
             # get 'close' reply 'close'
+            print('ws client want to close')
+            arg[1] = True
             stm.feed(None) #!!
-            await ws.send(data)
-            print('buf: ' + repr(stm._buf))
-            print(data)
+            await ws.send('closed')
+            if arg[2]:
+                arg[2].close()
+        elif data == 'closed':
+            print('ws read break2: ' + repr(data))
+            stm.feed(None) #!!
     
     print('ws end')
 

@@ -9,7 +9,6 @@ class MyStream():
         self._want = 0
     
     def feed(self, data):
-        print('MyStream feed: ' + repr(data))
         if not data:
             if self._want:
                 self._want = 0
@@ -92,7 +91,6 @@ class CryptedStream():
                 break
     
     def feed(self, data):
-        print('CryptedStream feed: ' + repr(data))
         if not data:
             if self._want:
                 self._want = 0
@@ -123,7 +121,6 @@ class CryptedStream():
                     self._future.set_result(r)
     
     async def read(self, n = -1):
-        print('reading buf: ' + repr(self._buf))
         if n == 0:
             raise Exception('error argument')
         if n < 0 and len(self._chunk) > 0:
@@ -177,7 +174,7 @@ async def socks_parse(readfn, writefn):
     # req2: VER|CMD|RSV|ATYP|ADDR|PORT
     header = await readfn(3)
     if header != b'\x05\x01\x00':
-        await writefn('\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
+        await writefn(b'\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00')
         return None
     header = await readfn(1)
     if header == b'\x01':
@@ -188,7 +185,7 @@ async def socks_parse(readfn, writefn):
         data += await readfn(data[0])
         host = data[1:]
     else:
-        await writefn('\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
+        await writefn(b'\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00')
         return None
     data += await readfn(2)
     port = int.from_bytes(data[-2:], 'big')
