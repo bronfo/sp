@@ -11,7 +11,7 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('v5!')
+    return response.text('v6!')
 
 
 async def from_target(arg, stm, transport):
@@ -21,7 +21,11 @@ async def from_target(arg, stm, transport):
     while True:
         data = await stm.read()
         if data:
-            await ws.send(utils.make_chunk(data, KEY))
+            try:
+                await ws.send(utils.make_chunk(data, KEY))
+            except Exception:
+                print('ws was closed while sending')
+                break
         else:
             if not arg['client_close']:
                 await ws.send('close')
