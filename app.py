@@ -65,8 +65,9 @@ async def ws(request, ws):
     while True:
         try:
             data = await ws.recv()
-        except Exception:
-            print('disconnected')
+        except Exception as e:
+            print('ws.recv ex: ' + repr(e))
+            break
         if not data:
             print('ws read break1: ' + repr(data))
             stm.feed(None)
