@@ -7,9 +7,12 @@ class MyStream():
     def __init__(self):
         self._buf = b''
         self._want = 0
+        
+        self._closed = False
     
     def feed(self, data):
         if not data:
+            self._closed = True
             if self._want:
                 self._want = 0
                 self._future.set_result(None)
@@ -40,6 +43,8 @@ class MyStream():
             r = self._buf[:n]
             self._buf = self._buf[n:]
             return r
+        if self._closed:
+            return None
         self._want = n
         self._future = asyncio.Future()
         r = await self._future
@@ -68,6 +73,8 @@ class CryptedStream():
         self._len = -1
         self._chunk = b''
         self._key = key
+        
+        self._closed = False
     
     def parse_chunk(self):
         while True:
@@ -92,20 +99,20 @@ class CryptedStream():
     
     def feed(self, data):
         if not data:
+            self._closed = True
             if self._want:
                 self._want = 0
                 self._future.set_result(None)
-            #set closed flag?
         else:
             self._buf += data
             self.parse_chunk()
             
             if self._len == 0:
                 self._len = -1
+                self._closed = True
                 if self._want:
                     self._want = 0
                     self._future.set_result(0)
-                #set closed flag?
             
             if self._want:
                 if self._want < 0:
@@ -132,6 +139,8 @@ class CryptedStream():
             r = self._chunk[:n]
             self._chunk = self._chunk[n:]
             return r
+        if self._closed:
+            return None
         self._want = n
         self._future = asyncio.Future()
         r = await self._future
@@ -143,7 +152,9 @@ class MyTransfer(asyncio.Protocol):
         self._arg = arg
     def connection_made(self, transport):
         self._stm = MyStream()
-        asyncio.ensure_future(self._transf_fn(self._arg, self._stm, transport))
+        self._transf_fn(self._stm, transport)
+        #asyncio.ensure_future(self._transf_fn(self._arg, self._stm, transport))
+        #asyncio.get_event_loop().create_task(self._transf_fn(self._arg, self._stm, transport))
     def data_received(self, data):
         self._stm.feed(data)
     def connection_lost(self, exc):
