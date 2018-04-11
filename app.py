@@ -11,13 +11,12 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('v6!')
+    return response.text('v8!')
 
 
 async def from_target(arg, stm, transport):
     # from target to tunnel
     ws = arg['ws']
-    print('connect ok')
     while True:
         data = await stm.read()
         if data:
@@ -34,6 +33,9 @@ async def from_target(arg, stm, transport):
     
     print('from_target end')
 
+def on_connect(arg, target_stm, transport):
+    asyncio.ensure_future(from_target(arg, target_stm, transport))
+
 async def transf(stm, ws, arg):
     target = await utils.socks_parse(stm.read,
         lambda data: ws.send(utils.make_chunk(data, KEY))
@@ -44,7 +46,7 @@ async def transf(stm, ws, arg):
     else:
         try:
             pair = await asyncio.get_event_loop().create_connection(
-                lambda: utils.MyTransfer(from_target, arg), *target)
+                lambda: utils.MyTransfer(on_connect, arg), *target)
         except Exception as e:
             print('connect ' + repr(target) + ' fail: ' + repr(e))
         else:
@@ -80,7 +82,6 @@ async def ws(request, ws):
         elif type(data) == bytes:
             stm.feed(data)
         elif data == 'connect':
-            print(data)
             arg['client_close'] = False
             arg['target_writer'] = None
             asyncio.ensure_future(transf(stm, ws, arg))

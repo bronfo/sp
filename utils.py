@@ -152,7 +152,7 @@ class MyTransfer(asyncio.Protocol):
         self._arg = arg
     def connection_made(self, transport):
         self._stm = MyStream()
-        self._transf_fn(self._stm, transport)
+        self._transf_fn(self._arg, self._stm, transport)
         #asyncio.ensure_future(self._transf_fn(self._arg, self._stm, transport))
         #asyncio.get_event_loop().create_task(self._transf_fn(self._arg, self._stm, transport))
     def data_received(self, data):
