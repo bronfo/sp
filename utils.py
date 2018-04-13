@@ -1,5 +1,6 @@
 #coding:utf-8
 
+import sys
 import asyncio
 import socket
 
@@ -74,7 +75,7 @@ class CryptedStream():
         self._chunk = b''
         self._key = key
         
-        self._closed = False
+        self._state = 0
     
     def parse_chunk(self):
         while True:
@@ -95,24 +96,27 @@ class CryptedStream():
                 # to get length
             else:
                 # need more data for chunk
+                # if _len == 0, data just append to _buf but not parsed
                 break
     
+    # data, or state, state 0: ok, state 1: reset, state 2: close, state 3: self-reset
     def feed(self, data):
-        if not data:
-            self._closed = True
+        if type(data) == int:
+            self._state = data
             if self._want:
                 self._want = 0
-                self._future.set_result(None)
-        else:
+                self._future.set_result(self._state)
+        elif type(data) == bytes:
             self._buf += data
             self.parse_chunk()
             
             if self._len == 0:
-                self._len = -1
-                self._closed = True
+                #self._closed = True # we are reset, not closed
+                self._state = 1 # reset
+                self._len = -1 # make parser continue
                 if self._want:
                     self._want = 0
-                    self._future.set_result(0)
+                    self._future.set_result(self._state)
             
             if self._want:
                 if self._want < 0:
@@ -139,22 +143,24 @@ class CryptedStream():
             r = self._chunk[:n]
             self._chunk = self._chunk[n:]
             return r
-        if self._closed:
-            return None
+        if self._state:
+            return self._state
         self._want = n
         self._future = asyncio.Future()
         r = await self._future
         return r
 
 class MyTransfer(asyncio.Protocol):
-    def __init__(self, transf_fn, arg):
-        self._transf_fn = transf_fn
+    def __init__(self, coro, arg):
+        self._coro = coro
         self._arg = arg
     def connection_made(self, transport):
         self._stm = MyStream()
-        self._transf_fn(self._arg, self._stm, transport)
-        #asyncio.ensure_future(self._transf_fn(self._arg, self._stm, transport))
-        #asyncio.get_event_loop().create_task(self._transf_fn(self._arg, self._stm, transport))
+        if self._coro:
+            asyncio.ensure_future(self._coro(self._arg, self._stm, transport))
+        elif self._arg is not None:
+            self._arg['stm'] = self._stm
+            self._arg['transport'] = transport
     def data_received(self, data):
         self._stm.feed(data)
     def connection_lost(self, exc):
@@ -215,3 +221,24 @@ def crypt_string(data, key, encode=True):
     #xored = ''.join(chr(ord(x) ^ ord(y)) for (x,y) in izip(data, cycle(key)))
     xored = b''.join(bytes([x ^ y]) for (x,y) in izip(data, cycle(key)))
     return base64.b64encode(xored) if encode else xored
+
+#
+class MyEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    def new_event_loop(self):
+        return asyncio.ProactorEventLoop()
+
+def init_loop():
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(MyEventLoopPolicy())
+        
+        # get the HANDLE of SIGINT event
+        import ctypes
+        _PyOS_SigintEvent = ctypes.pythonapi._PyOS_SigintEvent
+        _PyOS_SigintEvent.argtypes = ()
+        _PyOS_SigintEvent.restype = ctypes.c_void_p
+        Sigint_Event = _PyOS_SigintEvent()
+        
+        # return a task
+        loop = asyncio.get_event_loop()
+        loop._proactor.wait_for_handle(Sigint_Event)
+        return loop

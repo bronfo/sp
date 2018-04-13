@@ -1,103 +1,107 @@
 #coding:utf-8
 
+import sys
 import asyncio
-from sanic import Sanic
-from sanic import response
 import utils
 
+from sanic import Sanic
+from sanic import response
+
+import logging, os
+logging.basicConfig(format='%(asctime)s %(filename)s %(lineno)s: %(message)s')
+logger = logging.getLogger(os.path.basename(__file__))
+logger.setLevel(logging.DEBUG)
+
 KEY = b'sjbauicixugdhoix'
+ZERO = b'\x00\x00\x00\x00'
 
 app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('v8!')
+    return response.text('hello 4')
 
-
-async def from_target(arg, stm, transport):
-    # from target to tunnel
-    ws = arg['ws']
-    while True:
-        data = await stm.read()
-        if data:
+class WsTunnel():
+    def __init__(self, request, ws):
+        self._request = request
+        self._stm = utils.CryptedStream(KEY)
+        self._ws = ws
+        asyncio.ensure_future(self._feed())
+    
+    async def _feed(self):
+        port = str(self._request.port)
+        while True:
             try:
-                await ws.send(utils.make_chunk(data, KEY))
-            except Exception:
-                print('ws was closed while sending')
-                break
-        else:
-            if not arg['client_close']:
-                await ws.send('close')
-                print('target close')
-            break
-    
-    print('from_target end')
-
-def on_connect(arg, target_stm, transport):
-    asyncio.ensure_future(from_target(arg, target_stm, transport))
-
-async def transf(stm, ws, arg):
-    target = await utils.socks_parse(stm.read,
-        lambda data: ws.send(utils.make_chunk(data, KEY))
-        )
-    print('target=' + repr(target))
-    if not target:
-        await ws.send('close')
-    else:
-        try:
-            pair = await asyncio.get_event_loop().create_connection(
-                lambda: utils.MyTransfer(on_connect, arg), *target)
-        except Exception as e:
-            print('connect ' + repr(target) + ' fail: ' + repr(e))
-        else:
-            # from tunnel to target
-            transport = pair[0]
-            arg['target_writer'] = transport
-            while True:
-                data = await stm.read()
-                if data:
-                    transport.write(data)
+                data = await self._ws.recv()
+                if type(data) == bytes:
+                    self._stm.feed(data)
                 else:
-                    print('transf read break: ' + repr(data))
+                    logger.debug(':%s unexpected data: [%s]' % (port, repr(data)))
                     break
+            except Exception:
+                logger.debug(':%s broken' % port)
+                break
+
+        self._stm.feed(2)
     
-    print('transf end')
+    def reset(self):
+        self._stm.feed(0)
+    
+    async def serve(self):
+        async def fromwsstm(wsstm, transport):
+            while True:
+                data = await wsstm.read()
+                if type(data) == bytes:
+                    logger.debug('wsstm read: ' + repr(data)[:10])
+                    transport.write(data)
+                elif data == 1 or data == 2: #peer reset or peer close
+                    logger.debug('wsstm broken: ' + repr(data))
+                    if transport:
+                        transport.close()
+                    break
+        
+        port = str(self._request.port)
+        
+        remote = await utils.socks_parse(self._stm.read,
+            lambda data: self._ws.send(utils.make_chunk(data, KEY))
+        )
+        
+        logger.debug('remote: ' + repr(remote))
+        
+        arg = {}
+        pair = await asyncio.get_event_loop().create_connection(
+                lambda: utils.MyTransfer(None, arg), *remote) if remote else None
+        transport = pair[0] if pair else None
+        
+        task = asyncio.ensure_future(fromwsstm(self._stm, transport))
+        
+        if not pair:
+            logger.debug('not pair')
+            await self._ws.send(ZERO)
+        else:
+            remote_stm = arg['stm']
+            logger.debug('remote_stm=' + repr(remote_stm))
+            while True:
+                data = await remote_stm.read()
+                if data:
+                    logger.debug('remote_stm data: ' + repr(data)[:10])
+                    await self._ws.send(utils.make_chunk(data, KEY))
+                else:
+                    logger.debug('remote_stm broken & send-zero: ' + repr(data))
+                    await self._ws.send(ZERO)
+                    break
+        await task
+        logger.debug('serve exit')
+
 
 @app.websocket('/ws')
 async def ws(request, ws):
-    stm = utils.CryptedStream(KEY)
-    # one client one time
-    arg = {'ws': ws, 'client_close': False, 'target_writer': None}
+    tunnel = WsTunnel(request, ws)
     while True:
-        try:
-            data = await ws.recv()
-        except Exception as e:
-            print('ws.recv ex: ' + repr(e))
-            break
-        if not data:
-            print('ws read break1: ' + repr(data))
-            stm.feed(None)
-            # todo target.close()
-            break
-        elif type(data) == bytes:
-            stm.feed(data)
-        elif data == 'connect':
-            arg['client_close'] = False
-            arg['target_writer'] = None
-            asyncio.ensure_future(transf(stm, ws, arg))
-        elif data == 'close':
-            # get 'close' reply 'close'
-            print('ws client want to close')
-            arg['client_close'] = True
-            stm.feed(None) #!!
-            await ws.send('closed')
-            if arg['target_writer']:
-                arg['target_writer'].close()
-        elif data == 'closed':
-            print('ws read break2: ' + repr(data))
-            stm.feed(None) #!!
-    
-    print('ws end')
+        await tunnel.serve()
+        tunnel.reset()
 
 if __name__ == "__main__":
+    logger.debug('version 2')
+    utils.init_loop()
     app.run(host="0.0.0.0", port=8080)
