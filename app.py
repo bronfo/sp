@@ -19,7 +19,7 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('hello 3')
+    return response.text('hello 6')
 
 class WsTunnel():
     def __init__(self, request, ws):
@@ -73,19 +73,26 @@ class WsTunnel():
                 lambda: utils.MyTransfer(None, arg), *remote[:2]) if remote else None
         transport = pair[0] if pair else None
         
-        task = asyncio.ensure_future(fromwsstm(self._stm, transport))
-        
-        if not pair:
+        if pair:
+            await self._ws.send(utils.make_chunk(b'\x05\x00\x00' + remote[2], KEY))
+        elif remote:
             logger.debug('not pair')
-            if remote:
-                await self._ws.send(utils.make_chunk(b'\x05\x03\x00' + remote[2], KEY))
+            await self._ws.send(utils.make_chunk(b'\x05\x03\x00' + remote[2], KEY))
             await self._ws.send(ZERO)
         else:
-            await self._ws.send(utils.make_chunk(b'\x05\x00\x00' + remote[2], KEY))
+            await self._ws.send(ZERO)
+        
+        task = asyncio.ensure_future(fromwsstm(self._stm, transport))
+        
+        reply = b''
+        if pair:
             remote_stm = arg['stm']
             #logger.debug('remote_stm=' + repr(remote_stm))
             while True:
                 data = await remote_stm.read()
+                n = len(reply)
+                if n < 100:
+                    reply += data[:100-n]
                 if data:
                     #logger.debug('remote_stm data: ' + repr(data)[:10])
                     await self._ws.send(utils.make_chunk(data, KEY))
@@ -94,7 +101,7 @@ class WsTunnel():
                     await self._ws.send(ZERO)
                     break
         await task
-        #logger.debug('serve exit')
+        logger.debug('%s %d exit' % (remote, reply))
 
 
 @app.websocket('/ws')
@@ -105,6 +112,6 @@ async def ws(request, ws):
         tunnel.reset()
 
 if __name__ == "__main__":
-    logger.debug('version 5')
+    logger.debug('version 6')
     utils.init_loop()
     app.run(host="0.0.0.0", port=8080)
