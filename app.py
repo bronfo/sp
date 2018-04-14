@@ -19,7 +19,7 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('hello 7')
+    return response.text('hello 8')
 
 class WsTunnel():
     def __init__(self, request, ws):
@@ -73,11 +73,12 @@ class WsTunnel():
                 lambda: utils.MyTransfer(None, arg), *remote[:2]) if remote else None
         transport = pair[0] if pair else None
         
+        RP = b'\x01\x0a\x0a\x0a\x0a\x20\x20'
         if pair:
-            await self._ws.send(utils.make_chunk(b'\x05\x00\x00' + remote[2], KEY))
+            await self._ws.send(utils.make_chunk(b'\x05\x00\x00' + RP, KEY))
         elif remote:
             logger.debug('not pair')
-            await self._ws.send(utils.make_chunk(b'\x05\x03\x00' + remote[2], KEY))
+            await self._ws.send(utils.make_chunk(b'\x05\x03\x00' + RP, KEY))
             await self._ws.send(ZERO)
         else:
             await self._ws.send(ZERO)
@@ -112,6 +113,6 @@ async def ws(request, ws):
         tunnel.reset()
 
 if __name__ == "__main__":
-    logger.debug('version 7')
+    logger.debug('version 8')
     utils.init_loop()
     app.run(host="0.0.0.0", port=8080)
