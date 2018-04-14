@@ -19,7 +19,7 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('hello 6')
+    return response.text('hello 7')
 
 class WsTunnel():
     def __init__(self, request, ws):
@@ -90,11 +90,11 @@ class WsTunnel():
             #logger.debug('remote_stm=' + repr(remote_stm))
             while True:
                 data = await remote_stm.read()
-                n = len(reply)
-                if n < 100:
-                    reply += data[:100-n]
                 if data:
                     #logger.debug('remote_stm data: ' + repr(data)[:10])
+                    n = len(reply)
+                    if n < 100:
+                        reply += data[:100-n]
                     await self._ws.send(utils.make_chunk(data, KEY))
                 else:
                     #logger.debug('remote_stm broken & send-zero: ' + repr(data))
@@ -112,6 +112,6 @@ async def ws(request, ws):
         tunnel.reset()
 
 if __name__ == "__main__":
-    logger.debug('version 6')
+    logger.debug('version 7')
     utils.init_loop()
     app.run(host="0.0.0.0", port=8080)

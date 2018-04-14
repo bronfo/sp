@@ -14,23 +14,24 @@ class MyStream():
     def feed(self, data):
         if not data:
             self._closed = True
-            if self._want:
-                self._want = 0
-                self._future.set_result(None)
         else:
             self._buf += data
-            if self._want:
-                if self._want < 0:
-                    r = self._buf
-                    self._buf = b''
-                    self._want = 0
-                    self._future.set_result(r)
-                elif len(self._buf) >= self._want:
-                    n = self._want
-                    r = self._buf[:n]
-                    self._buf = self._buf[n:]
-                    self._want = 0
-                    self._future.set_result(r)
+        
+        if self._want:
+            if not self._buf:
+                self._want = 0
+                self._future.set_result(None)
+            elif self._want < 0:
+                r = self._buf
+                self._buf = b''
+                self._want = 0
+                self._future.set_result(r)
+            elif len(self._buf) >= self._want:
+                n = self._want
+                r = self._buf[:n]
+                self._buf = self._buf[n:]
+                self._want = 0
+                self._future.set_result(r)
     
     async def read(self, n = -1):
         if n == 0:
