@@ -101,7 +101,7 @@ class WsTunnel():
                     await self._ws.send(ZERO)
                     break
         await task
-        logger.debug('%s %d exit' % (remote, reply))
+        logger.debug('%s %s exit' % (remote, reply))
 
 
 @app.websocket('/ws')
