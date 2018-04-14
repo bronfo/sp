@@ -19,7 +19,7 @@ app = Sanic()
 
 @app.route("/")
 async def test(request):
-    return response.text('hello 4')
+    return response.text('hello 3')
 
 class WsTunnel():
     def __init__(self, request, ws):
@@ -52,10 +52,10 @@ class WsTunnel():
             while True:
                 data = await wsstm.read()
                 if type(data) == bytes:
-                    logger.debug('wsstm read: ' + repr(data)[:10])
+                    #logger.debug('wsstm read: ' + repr(data)[:10])
                     transport.write(data)
                 elif data == 1 or data == 2: #peer reset or peer close
-                    logger.debug('wsstm broken: ' + repr(data))
+                    #logger.debug('wsstm broken: ' + repr(data))
                     if transport:
                         transport.close()
                     break
@@ -70,28 +70,31 @@ class WsTunnel():
         
         arg = {}
         pair = await asyncio.get_event_loop().create_connection(
-                lambda: utils.MyTransfer(None, arg), *remote) if remote else None
+                lambda: utils.MyTransfer(None, arg), *remote[:2]) if remote else None
         transport = pair[0] if pair else None
         
         task = asyncio.ensure_future(fromwsstm(self._stm, transport))
         
         if not pair:
             logger.debug('not pair')
+            if remote:
+                await self._ws.send(utils.make_chunk(b'\x05\x03\x00' + remote[2], KEY))
             await self._ws.send(ZERO)
         else:
+            await self._ws.send(utils.make_chunk(b'\x05\x00\x00' + remote[2], KEY))
             remote_stm = arg['stm']
-            logger.debug('remote_stm=' + repr(remote_stm))
+            #logger.debug('remote_stm=' + repr(remote_stm))
             while True:
                 data = await remote_stm.read()
                 if data:
-                    logger.debug('remote_stm data: ' + repr(data)[:10])
+                    #logger.debug('remote_stm data: ' + repr(data)[:10])
                     await self._ws.send(utils.make_chunk(data, KEY))
                 else:
-                    logger.debug('remote_stm broken & send-zero: ' + repr(data))
+                    #logger.debug('remote_stm broken & send-zero: ' + repr(data))
                     await self._ws.send(ZERO)
                     break
         await task
-        logger.debug('serve exit')
+        #logger.debug('serve exit')
 
 
 @app.websocket('/ws')
@@ -102,6 +105,6 @@ async def ws(request, ws):
         tunnel.reset()
 
 if __name__ == "__main__":
-    logger.debug('version 2')
+    logger.debug('version 5')
     utils.init_loop()
     app.run(host="0.0.0.0", port=8080)

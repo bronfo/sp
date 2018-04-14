@@ -204,8 +204,8 @@ async def socks_parse(readfn, writefn):
         return None
     data += await readfn(2)
     port = int.from_bytes(data[-2:], 'big')
-    await writefn(b'\x05\x00\x00' + header + data)
-    return host, port
+    #await writefn(b'\x05\x00\x00' + header + data)
+    return host, port, header + data
 
 
 # bytes data
